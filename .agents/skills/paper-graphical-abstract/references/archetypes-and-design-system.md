@@ -1,6 +1,6 @@
 # Four Visual Archetypes & Complete Design System
 
-Every figure must select **one** primary archetype and enforce its exact color, typography, container, and connector grammar across the entire canvas.
+Every figure must select **one** primary archetype (or the flagship [**Architectural Studio Editorial**](./editorial_studio_style.md) two-stage preset in [`scripts/editorial_studio.py`](../scripts/editorial_studio.py)) and enforce its exact color, typography, container, and connector grammar across the entire canvas.
 
 ---
 

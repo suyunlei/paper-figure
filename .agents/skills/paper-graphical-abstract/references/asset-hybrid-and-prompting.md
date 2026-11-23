@@ -5,20 +5,24 @@
 Binyu Lei and UAL figures achieve exceptional credibility because they blend **real domain renders** (3D city models, street-view imagery, GIS maps, real SHAP/EMM plots) with **crisp Matplotlib/vector annotations**—never letting a single tool try to fake everything.
 
 ### A. Exporting Transparent-Background 3D Assets (PyVista / Blender / QGIS)
-When rendering a real 3D city model, voxel stack, or clay massing scene externally before compositing via `ual_ga_kit.py`:
+When rendering a real 3D city model, voxel stack, or clay massing scene externally before compositing via `editorial_studio.py` or `ual_ga_kit.py`:
 
 1. **Camera & Projection**:
    - Enable **parallel orthographic projection** (`plotter.enable_parallel_projection()` in PyVista; Orthographic camera in Blender).
-   - Lock to a **30° isometric angle** (e.g., `azimuth = 45°` or `-45°`, `elevation = 30°–35.26°`) across every 3D asset in the figure so left/right edges align across panels.
+   - Lock to a **30° isometric angle** (e.g., symmetric SW isometric `focus + [-D, -D, +D]`, identical `parallel_scale`) across every 3D asset in the figure so left/right edges align across panels.
 2. **Lighting & Antialiasing**:
-   - Use soft three-point studio lighting (`plotter.enable_lightkit()` or `three_lights`) with zero harsh specular glare.
-   - Enable MSAA (`multi_samples=8` in PyVista) and render at high resolution (`≥ 2000 × 2000 px`).
-3. **Transparent Background & Clay Shading**:
+   - Use soft three-point studio lighting (`lighting="three lights"` + MSAA anti-aliasing in PyVista) with zero harsh specular glare.
+   - Render off-screen at high resolution (`≥ 1100–2000 px`) and cache trimmed transparent PNGs in a dedicated asset directory so Stage-B layout tuning runs in seconds.
+3. **Alpha-Union Cropping & 3D→2D Sub-Pixel Anchor Projection**:
+   - For multi-layer 3D exploded stacks, crop all layers using their **joint alpha bounding box (`crop_stack_alpha_union`)** so corners stay pixel-aligned across layers.
+   - For single assets receiving leader callouts, crop with `tight_crop_with_bbox` and simultaneously project key 3D landmarks through the active VTK/orthographic camera into cropped normalized `[u, v]` coordinates saved to `anchors.json` (`project_pyvista_3d_to_crop_uv` / `project_ortho_3d_to_crop_uv`), then render arrows on top-most `ann_ax` via `add_anchored_callout`.
+4. **Transparent Background & Clay Shading**:
    - Export RGBA PNG with **alpha transparency** (`plotter.screenshot(..., transparent_background=True)`).
-   - For **Archetype B white-clay models**: set base city mesh to matte off-white (`#E6E8EC`, roughness `0.85`, ambient occlusion enabled) and paint ONLY the focal building (`#F0C419`), walking route (`#D6336C`), or sensor stems (`#3B5BDB` / `#D6336C`).
-4. **Compositing into `ual_ga_kit.py`**:
-   - Place rectangular or unframed transparent PNGs using `place_image_box(ax, "asset.png", x, y, w, h)`.
-   - Place street-view photos or zoomed simulation cutouts inside circular loupes using `place_image_loupe(ax, "svi.jpg", cx, cy, radius=0.82, rim_color='#FFFFFF', rim_lw=2.0)`.
+   - For **Studio Editorial** (`editorial_studio.py`): main walls `#E2E4E7`, oblique faces `#D5DFE6`, terracotta roofs/cuts `#CC6542`, terrain skirt `#8C8782`; darken ground to `#353B44` behind `inferno` facade maps; desaturate context behind `opacity=0.55–0.60` envelopes.
+   - For **Archetype B white-clay models**: set base city mesh to matte off-white (`#E6E8EC`) and paint ONLY the focal building (`#F0C419`), walking route (`#D6336C`), or sensor stems (`#3B5BDB` / `#D6336C`).
+5. **Compositing**:
+   - In `editorial_studio.py`, place assets with `rect = place_asset(ax, "asset.png", x0, y0, x1, y1)` (`Lanczos` proportional scaling, returning exact placement rectangle).
+   - In `ual_ga_kit.py`, use `place_image_box(ax, "asset.png", x, y, w, h)` or circular zoom `place_image_loupe(...)`.
 
 ### B. Real Mini-Charts vs. Schematic Vector Diagrams
 - **Embed real Matplotlib mini-charts** (exported as transparent PNG/SVG or drawn on inset `fig.add_axes(...)`) whenever showing empirical findings inside Stage 3/4/5:

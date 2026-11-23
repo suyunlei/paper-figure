@@ -2,7 +2,7 @@
 audit_figure.py — Automated Quantitative QA Validator for Paper Graphical Abstracts.
 
 Checks PNG resolution, aspect ratio, outer-edge clipping, neutral-ground balance,
-color-saturation restraint (90/10 UAL rule), and optional SVG editable vector text.
+color-saturation restraint (90/10 UAL rule), and optional SVG / PDF vector text.
 """
 
 from __future__ import annotations
@@ -54,10 +54,10 @@ def audit_png(png_path: Path, theme: str = "editorial_white") -> tuple[dict, lis
         findings.append(f"[OK] Resolution {w_px}x{h_px} px (aspect {aspect}:1, print {w_px/300:.2f}x{h_px/300:.2f} in @300 DPI).")
 
     # Expected theme background check
-    if theme == "studio_grey":
+    if theme in ("studio_grey", "editorial_studio"):
         expected = np.array([217, 219, 222])
         if np.linalg.norm(bg_rgb - expected) > 18:
-            findings.append(f"[WARN] studio_grey expected ~#D9DBDE, measured corner RGB={bg_rgb.astype(int).tolist()}.")
+            findings.append(f"[WARN] {theme} expected ~#D9DBDE, measured corner RGB={bg_rgb.astype(int).tolist()}.")
     elif theme in ("editorial_white", "interplay_twin", "geoai_matrix"):
         expected = np.array([255, 255, 255])
         if np.linalg.norm(bg_rgb - expected) > 18:
@@ -81,10 +81,11 @@ def audit_png(png_path: Path, theme: str = "editorial_white") -> tuple[dict, lis
 
     # 3. Neutral ground / whitespace balance
     bg_fraction = float((diff_all <= 14.0).mean())
+    max_bg = 0.84 if theme in ("editorial_studio", "studio_grey") else 0.78
     if bg_fraction < 0.22:
         findings.append(f"[WARN] Overcrowded layout: neutral background only {bg_fraction*100:.1f}% (<22%).")
-    elif bg_fraction > 0.78:
-        findings.append(f"[WARN] Sparse layout: neutral background {bg_fraction*100:.1f}% (>78%).")
+    elif bg_fraction > max_bg:
+        findings.append(f"[WARN] Sparse layout: neutral background {bg_fraction*100:.1f}% (>{int(max_bg*100)}%).")
     else:
         findings.append(f"[OK] Balanced neutral background share: {bg_fraction*100:.1f}%.")
 
@@ -152,15 +153,48 @@ def audit_svg(svg_path: Path) -> tuple[dict, list[str]]:
     }, findings
 
 
+def audit_pdf(pdf_path: Path) -> tuple[dict, list[str]]:
+    findings: list[str] = []
+    if not pdf_path.exists():
+        return {"pdf_exists": False}, [f"[FAIL] Missing PDF file: {pdf_path}"]
+    try:
+        import pymupdf
+    except ImportError:
+        try:
+            import fitz as pymupdf  # type: ignore
+        except ImportError:
+            return {"pdf_exists": True, "checked": False}, ["[WARN] pymupdf unavailable; skipped PDF vector inspection."]
+
+    doc = pymupdf.open(pdf_path)
+    if len(doc) == 0:
+        return {"pdf_exists": True, "pages": 0}, ["[FAIL] Empty PDF document."]
+
+    page = doc[0]
+    txt = page.get_text("text").strip()
+    fonts = sorted({f[3] for f in page.get_fonts() if len(f) > 3})
+    if len(txt) < 15:
+        findings.append("[FAIL] PDF page 1 has little or no selectable vector text (check pdf.fonttype=42).")
+    else:
+        findings.append(f"[OK] PDF vector text verified ({len(txt)} chars, fonts: {', '.join(fonts) or 'embedded'}).")
+
+    return {
+        "pdf_exists": True,
+        "pages": len(doc),
+        "selectable_text_chars": len(txt),
+        "fonts": fonts,
+    }, findings
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Audit rendered Graphical Abstract PNG and SVG.")
+    parser = argparse.ArgumentParser(description="Audit rendered Graphical Abstract PNG, SVG, and PDF.")
     parser.add_argument("png", type=Path, help="Path to rendered PNG figure.")
     parser.add_argument("--svg", type=Path, default=None, help="Optional path to editable SVG figure.")
+    parser.add_argument("--pdf", type=Path, default=None, help="Optional path to vector PDF figure.")
     parser.add_argument(
         "--theme",
-        choices=["studio_grey", "editorial_white", "interplay_twin", "geoai_matrix"],
+        choices=["editorial_studio", "studio_grey", "editorial_white", "interplay_twin", "geoai_matrix"],
         default="editorial_white",
-        help="Expected archetype theme.",
+        help="Expected archetype/preset theme.",
     )
     args = parser.parse_args()
 
@@ -173,6 +207,10 @@ def main() -> int:
         svg_metrics, svg_findings = audit_svg(args.svg)
         metrics["svg"] = svg_metrics
         findings.extend(svg_findings)
+    if args.pdf is not None:
+        pdf_metrics, pdf_findings = audit_pdf(args.pdf)
+        metrics["pdf"] = pdf_metrics
+        findings.extend(pdf_findings)
 
     for line in findings:
         print(line)
